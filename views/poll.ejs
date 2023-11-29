@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Poll </title>
+    <style>
+        body {
+            font-family: arial;
+            margin: 0;
+        }
+
+        nav {
+            background: #0e8201;
+            padding: 20px 10px;
+        }
+
+        nav ul {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        nav li {
+            list-style-type: none;
+            display: inline-block;
+            margin: 0 10px 0 0;
+        }
+
+        nav a {
+            color: #fff;
+            font-size: 18px;
+            background: rgba(255, 255, 255, 0.2);
+            text-decoration: none;
+            padding: 10px;
+            display: block;
+        }
+
+        main,
+        header {
+            max-width: 960px;
+            margin: 30px auto;
+            padding: 0 10px;
+            color: #333;
+        }
+    </style>
+    <style>
+        h1 {
+            text-align: center;
+        }
+
+        .poll-card {
+            border: 1px solid #ccc;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .poll-options {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        .option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <nav>
+        <ul>
+            <% if (user) { %>
+            <li><a href="/auth/logout">Log out</a></li>
+            <% } else { %>
+            <li><a href="/auth/login">Login</a></li>
+            <% } %>
+            <li><a href="/">Homepage</a></li>
+            <li><a href="/profile">Profile</a></li>
+        </ul>
+    </nav>
+    <header>
+        <h2>Homepage</h2>
+    </header>
+    <main>
+        <div>
+            <div id="pollsContainer"></div>
+
+            <div>
+                <label for="pollQuestion">Poll Question:</label>
+                <input type="text" id="pollQuestion" />
+            </div>
+
+            <ul class="poll-options" id="options">
+                <!-- Poll options will be dynamically added here -->
+            </ul>
+
+            <div>
+                <% polls.forEach(poll => { %>
+                <div class="poll-card">
+                    <h3>
+                        <%= poll.question %>
+                    </h3>
+                    <ul class="poll-options">
+                        <% poll.options.forEach(option => { %>
+                        <li class="option">
+                            <span>
+                                <%= option.name %>
+                            </span>
+                            <button onclick="vote('<%= poll._id %>', '<%= option._id %>')">Vote</button>
+                            <span>Votes: <span id="votes_<%= poll._id %>_<%= option._id %>">
+                                    <%= option.votes %>
+                                </span></span>
+                        </li>
+                        <% }); %>
+                    </ul>
+                </div>
+                <% }); %>
+            </div>
+
+        </div>
+    </main>
+    <script>
+        const pollsContainer = document.getElementById('pollsContainer');
+        let polls = [];
+
+        fetch('/api/polls')
+            .then(response => response.json())
+            .then(data => {
+                polls = data;
+                renderPolls();
+            })
+            .catch(error => console.error('Error fetching polls:', error));
+
+        function renderOptions(options, pollIndex) {
+            const optionsList = document.createElement('ul');
+            optionsList.classList.add('poll-options');
+
+            options.forEach((option, optionIndex) => {
+                const listItem = document.createElement('li');
+                listItem.classList.add('option');
+                listItem.innerHTML = `
+            <span>${option.name}</span>
+            <button onclick="vote('${polls[pollIndex]._id}', '${option._id}', ${pollIndex}, ${optionIndex})">Vote</button>
+            <span>Votes: <span id="votes_${pollIndex}_${optionIndex}">${option.votes}</span></span>
+        `;
+                optionsList.appendChild(listItem);
+            });
+
+            return optionsList;
+        }
+
+        function addOption() {
+            const newOptionName = document.getElementById('newOption').value;
+            if (newOptionName) {
+                const optionsContainer = document.getElementById('options');
+                const optionItem = document.createElement('li');
+                optionItem.classList.add('option');
+                optionItem.innerHTML = `
+            <span>${newOptionName}</span>
+        `;
+                optionsContainer.appendChild(optionItem);
+
+                document.getElementById('newOption').value = '';
+            }
+        }
+
+        function vote(pollId, optionId, pollIndex, optionIndex) {
+            // Send a POST request to the server to update the vote count
+            fetch(`/api/polls/${pollId}/vote/${optionId}`, {
+                    method: 'POST',
+                })
+                .then(response => response.json())
+                .then(updatedPoll => {
+                    // Update the vote count on the webpage
+                    polls[pollIndex] = updatedPoll;
+                    renderPolls(); // Re-render the polls on the page
+                })
+                .catch((err) => {
+                    console.error('Error updating vote count:', err.message);
+                });
+        }
+
+        // Function to render polls on the page
+        function renderPolls() {
+            // Clear existing polls before rendering
+            pollsContainer.innerHTML = '';
+
+            polls.forEach((poll, pollIndex) => {
+                const pollCard = document.createElement('div');
+                pollCard.classList.add('poll-card');
+                pollCard.innerHTML = `
+                <h3>${poll.question}</h3>
+            `;
+
+                const optionsList = renderOptions(poll.options, pollIndex);
+                pollCard.appendChild(optionsList);
+
+                pollsContainer.appendChild(pollCard);
+            });
+        }
+
+        function addPoll() {
+            const pollQuestion = document.getElementById('pollQuestion').value;
+            const optionsContainer = document.getElementById('options');
+            const options = Array.from(optionsContainer.children).map(option => {
+                return {
+                    name: option.querySelector('span').textContent.trim(),
+                    votes: 0
+                };
+            });
+
+            if (pollQuestion && options.length > 0) {
+                // Send a POST request to the server
+                fetch('/api/polls', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            question: pollQuestion,
+                            options: options,
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(newPoll => {
+                        console.log('Poll saved to the database', newPoll);
+
+                        // Display the new poll on the page
+                        const pollCard = document.createElement('div');
+                        pollCard.classList.add('poll-card');
+                        pollCard.innerHTML = `<h3>${pollQuestion}</h3>`;
+                        const optionsList = renderOptions(options, polls.length);
+                        pollCard.appendChild(optionsList);
+                        pollsContainer.appendChild(pollCard);
+
+                        // Clear the input fields
+                        document.getElementById('pollQuestion').value = '';
+                        optionsContainer.innerHTML = '';
+                    })
+                    .catch((err) => {
+                        console.error('Error saving poll to the database:', err.message);
+                    });
+            }
+        }
+    </script>
+</body>
+
+</html>
